@@ -1,0 +1,4 @@
+import { useState } from 'react';
+import { api } from '../services/api';
+import { Field,Notice } from '../ui';
+export function PasswordPanel(){const [old,setOld]=useState('');const [next,setNext]=useState('');const [message,setMessage]=useState('');return <section className="panel"><span className="eyebrow blue">ACCOUNT SECURITY</span><h2>Change password</h2><form className="form-grid" onSubmit={async e=>{e.preventDefault();try{await api('/api/auth/change-password',{method:'POST',body:JSON.stringify({currentPassword:old,newPassword:next})});setOld('');setNext('');setMessage('Password updated.');}catch(e){setMessage((e as Error).message);}}}><Field label="Current password" type="password" value={old} set={setOld} required/><Field label="New password (12+ characters)" type="password" value={next} set={setNext} minLength={12} required/><button className="button small">Update password</button></form>{message&&<Notice message={message}/>}</section>}

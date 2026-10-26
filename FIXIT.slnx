@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="FIXIT.API/FIXIT.API.csproj" />
+  <Project Path="FIXIT.Domain/FIXIT.Domain.csproj" />
+  <Project Path="FIXIT.Infrastructure/FIXIT.Infrastructure.csproj" />
+  <Project Path="FIXIT.Tests/FIXIT.Tests.csproj" />
+</Solution>

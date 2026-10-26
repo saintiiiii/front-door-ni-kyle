@@ -1,0 +1,6 @@
+@FIXIT.API_HostAddress = http://localhost:5148
+
+GET {{FIXIT.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
