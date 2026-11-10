@@ -69,6 +69,8 @@ dotnet ef migrations script --idempotent --project FIXIT.Infrastructure --startu
 
 The checked-in [migration script](<Database/FIXIT_Migrations.sql>) was generated from the current EF migrations. Review and apply it to the intended database using SQL Server tooling.
 
+In Development, SQL Server migrations are applied automatically on API startup. The MySQL local option creates its database and schema from the current EF model. The account directory is available to administrators in the dashboard, with search by name or email.
+
 The HTTP development profile listens on `http://localhost:5148`. `GET /health` does not need a database; service and account endpoints do. Swagger is available at `/swagger` in Development.
 
 For deployment, publish the API and frontend separately or host the frontend through a same-origin reverse proxy. Route `/api` and `/health` to ASP.NET Core, enable HTTPS, configure allowed host names and SQL connection strings through deployment secrets, and grant the API process exclusive access to `PrivateUploads`. Never expose that directory as static content.
@@ -83,9 +85,18 @@ npm run dev
 
 Open `http://localhost:5173`. Vite proxies `/api` and `/health` to the API on port 5148. Browser mutations use the API’s antiforgery token endpoint and same-origin cookie authentication.
 
+### Recover a local account with a damaged password record
+
+Set both values in the local environment and start the API once. This resets only the account with the supplied email through ASP.NET Identity. Use it only in Development, then clear both values. The password must satisfy Identity’s configured rules.
+
+```powershell
+$env:FIXIT_RECOVER_ACCOUNT_EMAIL = 'you@example.test'
+$env:FIXIT_RECOVER_ACCOUNT_PASSWORD = 'Choose-A-Unique-Local-Password-123!'
+dotnet run --project FIXIT.API
+```
 ### Create the first administrator
 
-Set these values only in the local environment, then start the API. When both are set, FIXIT applies migrations, creates the administrator if absent, and assigns the Administrator role. The password must satisfy Identity’s configured password rules.
+Set these values only in the local environment, then start the API. When both are set, FIXIT applies migrations and creates the administrator if absent. If the configured email is already an administrator, it resets that account to the configured password. Use this as an explicit local recovery step and clear both variables after setup. The password must satisfy Identity’s configured password rules.
 
 ```powershell
 $env:FIXIT_BOOTSTRAP_ADMIN_EMAIL = 'admin@example.test'
@@ -97,7 +108,7 @@ Unset the bootstrap values after setup. Public registration only accepts Custome
 
 ### Optional fictional demonstration accounts
 
-For a local classroom walkthrough, opt in from the Development environment only. Set a password that satisfies Identity's rules; both fictional accounts use that local password. The seeder applies migrations and is idempotent: it creates one demo customer, one pre-approved demo technician, a Makati address, weekly availability, and three sample bookings with clearly simulated payment records. Never enable this option in a deployed environment.
+For a local classroom walkthrough, opt in from the Development environment only. Set a password that satisfies Identity's rules; both fictional accounts use that local password. The seeder applies the local schema and is idempotent: it creates one demo customer, one pre-approved demo technician, a Makati address, weekly availability, and three sample bookings with clearly simulated payment records. While seeding is enabled, both fictional accounts are kept on the configured demo password so the documented login remains usable. Never enable this option in a deployed environment.
 
 ```powershell
 $env:FIXIT_SEED_DEMO_DATA = 'true'

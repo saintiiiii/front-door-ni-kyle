@@ -28,7 +28,7 @@ public class AuthController(UserManager<User> users,SignInManager<User> signIn,F
         return Created("/api/auth/me",new{u.Id,u.Email,u.FirstName,u.LastName,role,technicianStatus=role=="Technician"?TechnicianStatus.Pending.ToString():null});
     }
     [HttpPost("login"),AllowAnonymous]
-    public async Task<IActionResult> Login(LoginRequest r){var u=await users.FindByEmailAsync(r.Email);if(u is null)return Unauthorized(new{message="Email or password is incorrect."});var result=await signIn.PasswordSignInAsync(u,r.Password,true,true);if(!result.Succeeded)return Unauthorized(new{message="Email or password is incorrect, or the account is locked."});return Ok(new{u.Id,u.Email,u.FirstName,u.LastName,roles=await users.GetRolesAsync(u)});}
+    public async Task<IActionResult> Login(LoginRequest r){var u=await users.FindByEmailAsync(r.Email);if(u is null)return Unauthorized(new{message="Email or password is incorrect."});if(!u.IsActive)return Unauthorized(new{message="This account is inactive. Contact a FIXIT administrator for help."});try{var result=await signIn.PasswordSignInAsync(u,r.Password,true,true);if(!result.Succeeded)return Unauthorized(new{message="Email or password is incorrect, or the account is locked."});}catch(FormatException){return Unauthorized(new{message="This account has a damaged password record. Ask an administrator to reset it."});}return Ok(new{u.Id,u.Email,u.FirstName,u.LastName,roles=await users.GetRolesAsync(u)});}
     [HttpPost("logout"),Authorize]
     public async Task<IActionResult> Logout(){await signIn.SignOutAsync();return NoContent();}
     [HttpPost("change-password"),Authorize]

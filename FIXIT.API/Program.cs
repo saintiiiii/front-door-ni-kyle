@@ -47,12 +47,33 @@ if (databaseProvider.Equals("MySql", StringComparison.OrdinalIgnoreCase))
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<FIXITDbContext>().Database.EnsureCreatedAsync();
 }
+else if (app.Environment.IsDevelopment())
+{
+    // Keep a fresh or upgraded local SQL Server database usable without requiring
+    // a separate manual migration step before the first login.
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<FIXITDbContext>().Database.MigrateAsync();
+}
 app.UseExceptionHandler();
 app.Use(async (ctx,next)=>{if((HttpMethods.IsPost(ctx.Request.Method)||HttpMethods.IsPut(ctx.Request.Method)||HttpMethods.IsPatch(ctx.Request.Method)||HttpMethods.IsDelete(ctx.Request.Method))&&ctx.Request.Path.StartsWithSegments("/api")){try{await ctx.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(ctx);}catch(AntiforgeryValidationException){ctx.Response.StatusCode=StatusCodes.Status400BadRequest;await ctx.Response.WriteAsJsonAsync(new{message="A valid CSRF token is required."});return;}}await next();});
 app.Use(async (ctx,next)=>{ctx.Response.Headers["X-Content-Type-Options"]="nosniff";ctx.Response.Headers["X-Frame-Options"]="DENY";ctx.Response.Headers["Referrer-Policy"]="no-referrer";await next();});
 if(app.Environment.IsDevelopment()){app.UseSwagger();app.UseSwaggerUI();}
 app.UseHttpsRedirection(); app.UseRateLimiter(); app.UseAuthentication(); app.UseAuthorization(); app.MapControllers().RequireRateLimiting("api");
 app.MapGet("/health",()=>Results.Ok(new {status="ok",system="FIXIT",timeZone="Asia/Manila"}));
+var recoveryEmail=builder.Configuration["FIXIT_RECOVER_ACCOUNT_EMAIL"];
+var recoveryPassword=builder.Configuration["FIXIT_RECOVER_ACCOUNT_PASSWORD"];
+if(!string.IsNullOrWhiteSpace(recoveryEmail)||!string.IsNullOrWhiteSpace(recoveryPassword))
+{
+    if(!app.Environment.IsDevelopment())throw new InvalidOperationException("FIXIT_RECOVER_ACCOUNT_* can only be used in the Development environment.");
+    if(string.IsNullOrWhiteSpace(recoveryEmail)||string.IsNullOrWhiteSpace(recoveryPassword))throw new InvalidOperationException("Set both FIXIT_RECOVER_ACCOUNT_EMAIL and FIXIT_RECOVER_ACCOUNT_PASSWORD to recover a local account.");
+    using var scope=app.Services.CreateScope();
+    var manager=scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+    var user=await manager.FindByEmailAsync(recoveryEmail);
+    if(user is null)throw new InvalidOperationException("The configured local FIXIT account to recover was not found.");
+    var token=await manager.GeneratePasswordResetTokenAsync(user);
+    var reset=await manager.ResetPasswordAsync(user,token,recoveryPassword);
+    if(!reset.Succeeded)throw new InvalidOperationException("Unable to reset the configured local FIXIT account password. Check the configured password policy.");
+}
 var bootstrapEmail=builder.Configuration["FIXIT_BOOTSTRAP_ADMIN_EMAIL"];
 var bootstrapPassword=builder.Configuration["FIXIT_BOOTSTRAP_ADMIN_PASSWORD"];
 if(!string.IsNullOrWhiteSpace(bootstrapEmail)&&!string.IsNullOrWhiteSpace(bootstrapPassword))
@@ -62,12 +83,20 @@ if(!string.IsNullOrWhiteSpace(bootstrapEmail)&&!string.IsNullOrWhiteSpace(bootst
     if (databaseProvider.Equals("MySql", StringComparison.OrdinalIgnoreCase)) await db.Database.EnsureCreatedAsync();
     else await db.Database.MigrateAsync();
     var manager=scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-    if(await manager.FindByEmailAsync(bootstrapEmail) is null)
+    var admin=await manager.FindByEmailAsync(bootstrapEmail);
+    if(admin is null)
     {
-        var admin=new User{UserName=bootstrapEmail,Email=bootstrapEmail,EmailConfirmed=true,FirstName="FIXIT",LastName="Administrator"};
+        admin=new User{UserName=bootstrapEmail,Email=bootstrapEmail,EmailConfirmed=true,FirstName="FIXIT",LastName="Administrator"};
         var result=await manager.CreateAsync(admin,bootstrapPassword);
         if(!result.Succeeded)throw new InvalidOperationException("Unable to create configured FIXIT administrator. Check the configured password policy.");
         await manager.AddToRoleAsync(admin,"Administrator");
+    }
+    else if (await manager.IsInRoleAsync(admin,"Administrator") && !await PasswordMatches(manager,admin,bootstrapPassword))
+    {
+        // Explicit bootstrap configuration doubles as an account recovery path.
+        var token=await manager.GeneratePasswordResetTokenAsync(admin);
+        var result=await manager.ResetPasswordAsync(admin,token,bootstrapPassword);
+        if(!result.Succeeded)throw new InvalidOperationException("Unable to reset the configured FIXIT administrator password. Check the configured password policy.");
     }
 }
 var seedDemoData = builder.Configuration.GetValue<bool>("FIXIT_SEED_DEMO_DATA");
@@ -86,5 +115,11 @@ if (seedDemoData)
     await DemoDataSeeder.SeedAsync(db, scope.ServiceProvider.GetRequiredService<UserManager<User>>(), demoPassword);
 }
 app.Run();
+
+static async Task<bool> PasswordMatches(UserManager<User> manager, User user, string password)
+{
+    try { return await manager.CheckPasswordAsync(user,password); }
+    catch (FormatException) { return false; }
+}
 
 public partial class Program { }

@@ -15,6 +15,8 @@ public static class DemoDataSeeder
     {
         var customer = await FindOrCreateUser(users, CustomerEmail, "Mika", "Santos", "+639171000001", password);
         var technician = await FindOrCreateUser(users, TechnicianEmail, "Paolo", "Reyes", "+639171000002", password);
+        await EnsurePassword(users, customer, password);
+        await EnsurePassword(users, technician, password);
         await EnsureRole(users, customer, "Customer");
         await EnsureRole(users, technician, "Technician");
 
@@ -199,5 +201,22 @@ public static class DemoDataSeeder
             var result = await users.AddToRoleAsync(user, role);
             if (!result.Succeeded) throw new InvalidOperationException($"Unable to add the FIXIT demo account to the {role} role.");
         }
+    }
+
+    private static async Task EnsurePassword(UserManager<User> users, User user, string password)
+    {
+        try
+        {
+            if (await users.CheckPasswordAsync(user, password)) return;
+        }
+        catch (FormatException)
+        {
+            // A damaged stored hash must not prevent recovery of the fictional demo account.
+        }
+
+        var token = await users.GeneratePasswordResetTokenAsync(user);
+        var result = await users.ResetPasswordAsync(user, token, password);
+        if (!result.Succeeded)
+            throw new InvalidOperationException("Unable to restore the configured FIXIT demo password. Check the demo password policy.");
     }
 }
